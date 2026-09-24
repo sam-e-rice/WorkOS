@@ -17,10 +17,11 @@ for dir in .agents/skills/*/; do
   [ -f "$dir/SKILL.md" ] || fail "agent_skill_has_skill_md:$(basename "$dir")"
 done
 
-# test: readme_lists_skill — every .agents/skills directory is named in README.md.
+# test: readme_lists_skill — every .agents/skills directory has its own bullet in README.md.
+readme_bullet_names=$(grep -oE '^- `[^`]+`' README.md 2>/dev/null | sed -E 's/^- `//; s/`$//')
 for dir in .agents/skills/*/; do
   name=$(basename "$dir")
-  grep -qF -- "$name" README.md 2>/dev/null || fail "readme_lists_skill:$name"
+  printf '%s\n' "$readme_bullet_names" | grep -qxF -- "$name" || fail "readme_lists_skill:$name"
 done
 
 [ "$fails" -eq 0 ] && echo "ok" || exit 1
