@@ -17,4 +17,10 @@ for dir in .agents/skills/*/; do
   [ -f "$dir/SKILL.md" ] || fail "agent_skill_has_skill_md:$(basename "$dir")"
 done
 
+# test: readme_lists_skill — every .agents/skills directory is named in README.md.
+for dir in .agents/skills/*/; do
+  name=$(basename "$dir")
+  grep -qF -- "$name" README.md 2>/dev/null || fail "readme_lists_skill:$name"
+done
+
 [ "$fails" -eq 0 ] && echo "ok" || exit 1
