@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Edit(./state/**)",
+      "Bash(.venv/bin/python scripts/*)",
+      "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_send_message",
+      "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_read_thread",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-fetch",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-search",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-query-data-sources",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-create-pages",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-update-page",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-create-file-upload"
+    ],
+    "deny": [
+      "Edit(./scripts/**)",
+      "Edit(./config/**)",
+      "Edit(./.claude/**)",
+      "Edit(./state/debriefs.json)",
+      "Edit(./state/open_roles.json)",
+      "Edit(./state/log.jsonl)",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-move-pages",
+      "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-duplicate-page",
+      "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_schedule_message",
+      "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_create_conversation",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*__(slack_send_message|notion-create-pages|notion-update-page)",
+        "hooks": [{ "type": "command", "command": ".venv/bin/python .claude/hooks/guard.py" }]
+      }
+    ]
+  }
+}
