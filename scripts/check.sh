@@ -24,4 +24,7 @@ for dir in .agents/skills/*/; do
   printf '%s\n' "$readme_bullet_names" | grep -qxF -- "$name" || fail "readme_lists_skill:$name"
 done
 
+# test: interview_desk_tests — the interview-desk pytest suite passes.
+(cd interview-desk && uv run --quiet pytest -q >/dev/null 2>&1) || fail interview_desk_tests
+
 [ "$fails" -eq 0 ] && echo "ok" || exit 1

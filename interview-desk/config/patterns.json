@@ -1,0 +1,4 @@
+{
+  "title_regex": "^Hang Out With Sam Rice \\((?P<name>.+?)\\) – (?P<when>\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}) NZ[SD]T – Notes by Gemini$",
+  "sam_speaker": "Sam Rice | We Are Eight"
+}

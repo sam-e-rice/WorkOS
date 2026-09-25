@@ -1,0 +1,4 @@
+.venv/
+state/
+inbox/
+__pycache__/
