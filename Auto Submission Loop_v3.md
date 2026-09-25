@@ -180,6 +180,7 @@ Rules
 8. **Verify quotes**: each `> "..." (Name, HH:MM:SS)` must match a candidate segment (normalised whitespace/case/punctuation). Fail → retry once → drop and log.
 9. **Ask**: post Slack message + thread brief; create Candidates row (`Needs decision`); `awaiting_decision`.
 10. **Read replies**: for every item with `slack_ts`, fetch thread replies from Sam since `last_reply_ts`; apply the protocol table.
+    Also read top-level DM messages; `state.py dm-reply` applies one only when exactly one item is waiting, else returns an `ask` to post.
 11. **Draft** (on yes):
     a. `ids-recruitment-submissions` with transcript, CV text, role brief. Any question it raises → post in thread, `needs_input`, stop this item.
     b. `ids-sam-rice-voice` (client-facing register): tone only.
@@ -298,6 +299,9 @@ PY=.venv/bin/python
 3. Recover: `$PY scripts/state.py recover` (drafting → draft_failed).
 4. Replies: for each item with slack_ts, read thread replies from Sam since
    last_reply_ts; apply the protocol (yes / yes <role> / no <reason> / answer).
+   Then read top-level DM messages since the oldest waiting slack_ts and run
+   `$PY scripts/state.py dm-reply --text ... --user ... --ts ...` on each, oldest
+   first. action "ask" → post its message in the DM.
 5. Brief: for each item in {new, failed} with transcript_ready:
    a. `$PY scripts/match_cv.py --email ... --name ... --meeting-at ...`
    b. Fetch the role brief page if role_row set.

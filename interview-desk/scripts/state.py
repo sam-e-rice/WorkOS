@@ -60,6 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("--text", required=True)
     ar.add_argument("--user", required=True)
     ar.add_argument("--ts")
+    dm = sub.add_parser("dm-reply")
+    dm.add_argument("--text", required=True)
+    dm.add_argument("--user", required=True)
+    dm.add_argument("--ts", required=True)
     sr = sub.add_parser("save-roles")
     sr.add_argument("--data", required=True)
     return p
@@ -96,6 +100,10 @@ def main(argv=None) -> int:
             slack = json.loads((sl.root() / "config" / "slack.json").read_text())
             print(json.dumps(replies.apply_reply(args.key, args.text, args.user, args.ts,
                                                  roles.load_roles(), slack.get("sam_user_id", ""))))
+        elif args.cmd == "dm-reply":
+            slack = json.loads((sl.root() / "config" / "slack.json").read_text())
+            print(json.dumps(replies.route_dm(args.text, args.user, args.ts,
+                                              roles.load_roles(), slack.get("sam_user_id", ""))))
         elif args.cmd == "save-roles":
             roles.save_roles(json.loads(args.data))
     except sl.StateError as e:
