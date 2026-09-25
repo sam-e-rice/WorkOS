@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 
+import replies
+import roles
 import statelib as sl
 
 
@@ -53,6 +55,13 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--days", type=int, default=30)
     n = sub.add_parser("notify")
     n.add_argument("message")
+    ar = sub.add_parser("apply-reply")
+    ar.add_argument("key")
+    ar.add_argument("--text", required=True)
+    ar.add_argument("--user", required=True)
+    ar.add_argument("--ts")
+    sr = sub.add_parser("save-roles")
+    sr.add_argument("--data", required=True)
     return p
 
 
@@ -83,6 +92,12 @@ def main(argv=None) -> int:
             print(sl.prune(days=args.days))
         elif args.cmd == "notify":
             notify(args.message)
+        elif args.cmd == "apply-reply":
+            slack = json.loads((sl.root() / "config" / "slack.json").read_text())
+            print(json.dumps(replies.apply_reply(args.key, args.text, args.user, args.ts,
+                                                 roles.load_roles(), slack.get("sam_user_id", ""))))
+        elif args.cmd == "save-roles":
+            roles.save_roles(json.loads(args.data))
     except sl.StateError as e:
         print(str(e), file=sys.stderr)
         return 2
