@@ -293,7 +293,8 @@ description: Hourly Interview Desk run. Brief new hangs in Slack, read Sam's
 
 PY=.venv/bin/python
 
-1. `$PY scripts/state.py lock`; non-zero → stop.
+1. `$PY scripts/state.py lock`; non-zero → stop. (Exit 4 = not started in
+   interview-desk/, so the guard hook isn't loaded. Never work around it.)
 2. `$PY scripts/watch_new_notes.py` → JSON items (new + open). It sets
    skipped / pending_transcript / abandoned itself.
 3. Recover: `$PY scripts/state.py recover` (drafting → draft_failed).

@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import replies
 import roles
@@ -73,6 +74,10 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.cmd == "lock":
+            # The guard hook loads only when the session starts in the desk root.
+            if Path.cwd().resolve() != sl.root().resolve():
+                print(f"run from {sl.root()}: the guard hook isn't loaded elsewhere", file=sys.stderr)
+                return 4
             if not sl.acquire_lock(os.getpid()):
                 print("lock held", file=sys.stderr)
                 return 3

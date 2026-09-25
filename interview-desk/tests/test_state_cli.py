@@ -4,8 +4,16 @@ from helpers import run_script
 
 
 def test_lock_twice_exits_3(desk):
-    assert run_script("state.py", "lock").returncode == 0
-    assert run_script("state.py", "lock").returncode == 3
+    assert run_script("state.py", "lock", cwd=desk).returncode == 0
+    assert run_script("state.py", "lock", cwd=desk).returncode == 3
+
+
+def test_lock_refuses_outside_desk_root(desk):
+    # Project hooks (the guard) only load when the session starts in the desk root.
+    r = run_script("state.py", "lock", cwd=desk.parent)
+    assert r.returncode == 4
+    assert "guard" in r.stderr
+    assert run_script("state.py", "lock", cwd=desk).returncode == 0
 
 
 def test_illegal_set_exits_2(desk):

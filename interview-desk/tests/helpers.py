@@ -5,8 +5,8 @@ from pathlib import Path
 PROJECT = Path(__file__).resolve().parent.parent
 
 
-def run_script(name, *args, stdin=None):
+def run_script(name, *args, stdin=None, cwd=None):
     return subprocess.run(
         [sys.executable, str(PROJECT / "scripts" / name), *args],
-        capture_output=True, text=True, input=stdin,
+        capture_output=True, text=True, input=stdin, cwd=cwd,
     )
