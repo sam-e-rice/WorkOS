@@ -30,7 +30,14 @@ ITEM_DEFAULTS = {
     "role_row": None, "cv_path": None, "slack_ts": None, "last_reply_ts": None,
     "notion_row": None, "submission_page": None, "question": None, "answer": None,
     "park_reason": None, "error": None,
+    "approved_by": None, "approved_ts": None, "approved_parent": None,
 }
+# Set only by replies.apply_reply via set_status(approval=...), never through fields.
+PROTECTED = {"status", "attempts", "approved_by", "approved_ts", "approved_parent"}
+# Once recorded, a Notion id can't be pointed somewhere else.
+WRITE_ONCE = {"notion_row", "submission_page"}
+APPROVAL_KEYS = ("approved_by", "approved_ts", "approved_parent")
+NEEDS_APPROVAL = {"awaiting_decision", "parked"}
 
 
 class StateError(Exception):
@@ -83,8 +90,17 @@ def _log(entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
-def _clean(fields: dict | None) -> dict:
-    return {k: v for k, v in (fields or {}).items() if k not in ("status", "attempts")}
+def _apply(doc_id: str, item: dict, fields: dict | None) -> None:
+    clean = {k: v for k, v in (fields or {}).items() if k not in PROTECTED}
+    for k in WRITE_ONCE & clean.keys():
+        if item.get(k) and clean[k] != item[k]:
+            raise StateError(f"{doc_id}: {k} is write-once (already {item[k]!r})")
+    item.update(clean)
+
+
+def _check_not_terminal(doc_id: str, item: dict) -> None:
+    if item["status"] in TERMINAL:
+        raise StateError(f"{doc_id} is {item['status']}; terminal items can't change")
 
 
 def resolve_key(data: dict, key: str) -> str:
@@ -101,18 +117,20 @@ def upsert(doc_id: str, fields: dict, now: datetime | None = None) -> dict:
     data = load()
     item = data["items"].get(doc_id)
     if item is None:
-        item = {"status": "new", "attempts": 0, **ITEM_DEFAULTS, **_clean(fields)}
+        item = {"status": "new", "attempts": 0, **ITEM_DEFAULTS}
+        _apply(doc_id, item, fields)
         data["items"][doc_id] = item
         _log({"ts": iso(now), "doc_id": doc_id, "from": None, "to": "new"})
     else:
-        item.update(_clean(fields))
+        _check_not_terminal(doc_id, item)
+        _apply(doc_id, item, fields)
     item["updated"] = iso(now)
     save(data)
     return item
 
 
 def set_status(key: str, status: str, fields: dict | None = None,
-               now: datetime | None = None) -> tuple[str, dict]:
+               now: datetime | None = None, approval: dict | None = None) -> tuple[str, dict]:
     now = now or utcnow()
     if status not in TRANSITIONS:
         raise StateError(f"unknown status {status!r}")
@@ -120,9 +138,14 @@ def set_status(key: str, status: str, fields: dict | None = None,
     doc_id = resolve_key(data, key)
     item = data["items"][doc_id]
     cur = item["status"]
+    _check_not_terminal(doc_id, item)
     if not (status == cur and status not in COUNTED) and status not in TRANSITIONS[cur]:
         raise StateError(f"{doc_id}: {cur} -> {status} not allowed")
-    item.update(_clean(fields))
+    if status == "drafting" and cur in NEEDS_APPROVAL:
+        if not approval or not all(approval.get(k) for k in APPROVAL_KEYS):
+            raise StateError(f"{doc_id}: {cur} -> drafting needs Sam's approval")
+        item.update({k: approval[k] for k in APPROVAL_KEYS})
+    _apply(doc_id, item, fields)
     new = status
     if status in COUNTED:
         item["attempts"] += 1

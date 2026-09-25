@@ -20,6 +20,7 @@
       "Edit(./state/debriefs.json)",
       "Edit(./state/open_roles.json)",
       "Edit(./state/log.jsonl)",
+      "Edit(./state/created_pages.json)",
       "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-move-pages",
       "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-duplicate-page",
       "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_schedule_message",
@@ -32,7 +33,23 @@
     "PreToolUse": [
       {
         "matcher": "mcp__.*__(slack_send_message|notion-create-pages|notion-update-page)",
-        "hooks": [{ "type": "command", "command": ".venv/bin/python .claude/hooks/guard.py" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard.py || exit 2"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*__notion-create-pages",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard.py --record"
+          }
+        ]
       }
     ]
   }

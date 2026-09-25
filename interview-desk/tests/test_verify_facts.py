@@ -49,6 +49,22 @@ def test_unsupported_percent_flagged():
     assert {"kind": "percent", "value": 60.0} in out
 
 
+def test_bare_salary_number_flagged():
+    out = vf.check(DRAFT.replace("$180k base", "NZD 210000 base"), sources(), allow=["EQL"])
+    assert {"kind": "money", "value": 210000} in out
+
+
+def test_employer_label_and_works_for_flagged():
+    draft = DRAFT + "Current employer: Fonterra\nShe works for Fonterra.\n"
+    out = vf.check(draft, sources(), allow=["EQL"])
+    assert {"kind": "employer", "value": "Fonterra"} in out
+
+
+def test_word_notice_flagged():
+    out = vf.check(DRAFT.replace("4 weeks", "seven weeks"), sources(), allow=["EQL"])
+    assert {"kind": "notice", "value": "7 week"} in out
+
+
 def test_money_parsing():
     assert vf.money("$180,000 or 1.5m or 95k") == {180000, 1500000, 95000}
     assert vf.money("40% of 2019") == set()

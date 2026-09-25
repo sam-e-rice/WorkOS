@@ -12,3 +12,9 @@ def norm(s: str) -> str:
 
 def tokens(s: str) -> list[str]:
     return norm(s).split()
+
+
+def same_person(label: str, name: str) -> bool:
+    """Transcript label vs calendar name: exact, or same first name ("Jane" vs "Jane Doe")."""
+    a, b = norm(label).split(), norm(name).split()
+    return bool(a and b) and (a == b or a[0] == b[0])

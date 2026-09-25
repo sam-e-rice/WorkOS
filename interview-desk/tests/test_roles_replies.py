@@ -99,7 +99,7 @@ def test_already_seen_reply_is_ignored(desk):
 
 def test_answer_resumes_needs_input(desk):
     awaiting(desk, "r1")
-    sl.set_status("doc1", "drafting")
+    replies.apply_reply("doc1", "yes", SAM, "100.5", ROLES, SAM)
     sl.set_status("doc1", "needs_input", {"question": "Base or package?"})
     assert replies.apply_reply("doc1", "base", SAM, "101.0", ROLES, SAM)["action"] == "resume"
     item = sl.load()["items"]["doc1"]
@@ -117,3 +117,16 @@ def test_cli_save_roles_and_apply_reply(desk):
 def test_save_roles_rejects_missing_keys(desk):
     r = run_script("state.py", "save-roles", "--data", json.dumps([{"id": "x"}]))
     assert r.returncode == 2
+
+
+def test_yes_records_approval_and_frozen_parent(desk):
+    awaiting(desk, "r1")
+    replies.apply_reply("doc1", "yes", SAM, "101.0", ROLES, SAM)
+    item = sl.load()["items"]["doc1"]
+    assert (item["approved_by"], item["approved_ts"], item["approved_parent"]) == (SAM, "101.0", "p1")
+
+
+def test_yes_for_a_closed_role_is_refused(desk):
+    awaiting(desk, "r4")
+    assert replies.apply_reply("doc1", "yes", SAM, "101.0", ROLES, SAM)["action"] == "refuse"
+    assert sl.load()["items"]["doc1"]["status"] == "awaiting_decision"

@@ -32,3 +32,11 @@ def test_list_open_includes_key(desk):
 def test_notify_is_quiet_in_tests(desk):
     r = run_script("state.py", "notify", '2 new "briefs"')
     assert r.returncode == 0
+
+
+def test_cli_cannot_approve_a_draft(desk):
+    run_script("state.py", "upsert", "d1", "--data", "{}")
+    run_script("state.py", "set", "d1", "awaiting_decision")
+    r = run_script("state.py", "set", "d1", "drafting", "--data", '{"approved_by": "U_SAM"}')
+    assert r.returncode == 2
+    assert "approval" in r.stderr

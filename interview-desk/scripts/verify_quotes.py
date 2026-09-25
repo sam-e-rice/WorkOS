@@ -7,43 +7,53 @@ import sys
 from pathlib import Path
 
 import transcript
-from textnorm import norm
+from textnorm import norm, same_person
 
 QUOTE_RE = re.compile(
     r'^>[ \t]*["“](?P<q>.+?)["”][ \t]*\((?P<who>[^,()]+),[ \t]*(?P<ts>\d{1,2}:\d{2}:\d{2})\)[ \t]*$',
     re.M,
 )
+QUOTE_LIKE_RE = re.compile(r'^>[ \t]*["“].*$', re.M)
+MIN_TOKENS = 3
+TS_SLACK = 60  # seconds either side of the run a quote's timestamp may fall
 
 
-def same_person(label: str, name: str) -> bool:
-    a, b = norm(label).split(), norm(name).split()
-    return bool(a and b) and (a == b or a[0] == b[0])
+def _secs(ts: str) -> int:
+    h, m, s = (int(x) for x in ts.split(":"))
+    return h * 3600 + m * 60 + s
 
 
-def candidate_runs(segments: list[dict], name: str, sam_label: str) -> list[str]:
-    """Normalised text of each unbroken run of the candidate speaking."""
+def candidate_runs(segments: list[dict], name: str, sam_label: str) -> list[tuple[str, int, int]]:
+    """(normalised text, first start, last start) for each unbroken run of the candidate speaking."""
     runs, cur = [], []
-    for s in segments:
+    for s in segments + [{"speaker": sam_label, "start": "00:00:00", "text": ""}]:
         if norm(s["speaker"]) != norm(sam_label) and same_person(s["speaker"], name):
-            cur.append(norm(s["text"]))
+            cur.append(s)
         elif cur:
-            runs.append(" ".join(cur))
+            runs.append((" ".join(norm(c["text"]) for c in cur), _secs(cur[0]["start"]), _secs(cur[-1]["start"])))
             cur = []
-    if cur:
-        runs.append(" ".join(cur))
     return runs
 
 
 def check(md: str, segments: list[dict], name: str, sam_label: str) -> list[dict]:
-    runs = [f" {r} " for r in candidate_runs(segments, name, sam_label)]
+    runs = candidate_runs(segments, name, sam_label)
     fails = []
+    matched = set()
     for m in QUOTE_RE.finditer(md):
+        matched.add(m[0])
         q = norm(m["q"])
         who = m["who"].strip()
+        ts = _secs(m["ts"])
         if norm(who) == norm(sam_label) or not same_person(who, name):
             fails.append({"quote": m["q"], "line": m[0], "reason": f"attributed to {who}, not the candidate"})
-        elif not q or not any(f" {q} " in r for r in runs):
+        elif len(q.split()) < MIN_TOKENS:
+            fails.append({"quote": m["q"], "line": m[0], "reason": "too short to verify"})
+        elif not any(f" {q} " in f" {text} " and first - TS_SLACK <= ts <= last + TS_SLACK
+                     for text, first, last in runs):
             fails.append({"quote": m["q"], "line": m[0], "reason": "not found in the candidate's words"})
+    for m in QUOTE_LIKE_RE.finditer(md):
+        if m[0] not in matched:
+            fails.append({"quote": m[0], "line": m[0], "reason": "not in quote format"})
     return fails
 
 

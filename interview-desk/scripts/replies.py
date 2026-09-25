@@ -1,6 +1,6 @@
 """Turn Sam's Slack thread replies into state transitions."""
 import statelib as sl
-from roles import describe, match_role
+from roles import describe, is_open, match_role
 
 YES = {"yes", "y", "yep", "yeah", "submit"}
 NO = {"no", "n", "nah", "nope", "park"}
@@ -28,6 +28,8 @@ def apply_reply(key: str, text: str, user: str, ts: str | None,
     data = sl.load()
     doc_id = sl.resolve_key(data, key)
     item = data["items"][doc_id]
+    if item["status"] in sl.TERMINAL:
+        return {"action": "ignore", "reason": f"status {item['status']}"}
     last = item.get("last_reply_ts")
     if ts and last and float(ts) <= float(last):
         return {"action": "ignore", "reason": "already seen"}
@@ -54,9 +56,13 @@ def apply_reply(key: str, text: str, user: str, ts: str | None,
             hint = f" Did you mean: {', '.join(m['hints'])}?" if m["hints"] else ""
             return {"action": "refuse", "message": f'Couldn\'t match "{r["arg"]}" to one open role.{hint}'}
         role_row = m["match"]
-    if not role_row:
-        open_roles = ", ".join(describe(x) for x in roles if (x.get("status") or "").lower() == "open")
+    role = next((x for x in roles if x["id"] == role_row and is_open(x)), None)
+    if not role:
+        open_roles = ", ".join(describe(x) for x in roles if is_open(x))
         return {"action": "refuse",
-                "message": f"No role for this hang. Reply `yes <role or client>`. Open roles: {open_roles}"}
-    sl.set_status(doc_id, "drafting", {"role_row": role_row})
+                "message": f"No open role for this hang. Reply `yes <role or client>`. Open roles: {open_roles}"}
+    # The approval freezes the Submissions page the guard will allow for this item.
+    approval = {"approved_by": user, "approved_ts": ts or sl.iso(sl.utcnow()),
+                "approved_parent": role["submissions_page"]}
+    sl.set_status(doc_id, "drafting", {"role_row": role_row}, approval=approval)
     return {"action": "draft", "role_row": role_row}

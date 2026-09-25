@@ -5,6 +5,9 @@ import pytest
 import statelib as sl
 
 
+APPROVAL = {"approved_by": "U_SAM", "approved_ts": "101.0", "approved_parent": "p1"}
+
+
 def log_lines(desk):
     return [json.loads(l) for l in (desk / "state" / "log.jsonl").read_text().splitlines()]
 
@@ -75,7 +78,7 @@ def test_awaiting_decision_resets_attempts(desk):
 def test_draft_failure_keeps_the_yes(desk):
     sl.upsert("d1", {})
     sl.set_status("d1", "awaiting_decision")
-    sl.set_status("d1", "drafting")
+    sl.set_status("d1", "drafting", approval=APPROVAL)
     _, item = sl.set_status("d1", "draft_failed")
     assert item["status"] == "draft_failed"
     _, item = sl.set_status("d1", "drafting")
@@ -128,7 +131,7 @@ def test_default_watermark_is_seven_days_back(desk):
 def test_recover_moves_drafting_to_draft_failed(desk):
     sl.upsert("d1", {})
     sl.set_status("d1", "awaiting_decision")
-    sl.set_status("d1", "drafting")
+    sl.set_status("d1", "drafting", approval=APPROVAL)
     assert sl.recover() == ["d1"]
     assert sl.load()["items"]["d1"]["status"] == "draft_failed"
 
@@ -148,3 +151,37 @@ def test_prune_keeps_files_of_open_items(desk):
 def test_short_keys_are_unique_prefixes():
     keys = sl.short_keys(["abcdef111", "abcdef222", "zz"])
     assert keys == {"abcdef111": "abcdef1", "abcdef222": "abcdef2", "zz": "zz"}
+
+
+def test_drafting_from_a_decision_requires_approval(desk):
+    sl.upsert("d1", {})
+    sl.set_status("d1", "awaiting_decision")
+    with pytest.raises(sl.StateError, match="approval"):
+        sl.set_status("d1", "drafting")
+    _, item = sl.set_status("d1", "drafting", approval=APPROVAL)
+    assert item["approved_by"] == "U_SAM"
+    assert item["approved_parent"] == "p1"
+
+
+def test_approval_fields_cannot_be_set_directly(desk):
+    sl.upsert("d1", {"approved_parent": "evil"})
+    _, item = sl.set_status("d1", "pending_transcript", {"approved_by": "U_EVIL"})
+    assert item["approved_parent"] is None
+    assert item["approved_by"] is None
+
+
+def test_page_ids_are_write_once(desk):
+    sl.upsert("d1", {"submission_page": "aaa"})
+    sl.upsert("d1", {"submission_page": "aaa"})
+    with pytest.raises(sl.StateError, match="write-once"):
+        sl.upsert("d1", {"submission_page": "bbb"})
+
+
+def test_terminal_items_are_frozen(desk):
+    sl.upsert("d1", {})
+    for _ in range(3):
+        sl.set_status("d1", "failed")
+    with pytest.raises(sl.StateError, match="abandoned"):
+        sl.set_status("d1", "abandoned", {"error": "x"})
+    with pytest.raises(sl.StateError, match="abandoned"):
+        sl.upsert("d1", {"submission_page": "zzz"})

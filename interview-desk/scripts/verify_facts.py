@@ -14,12 +14,15 @@ RANGE_RE = re.compile(
     r"\$?(\d+(?:\.\d+)?)\s*(?:to|and|-|–)\s*\$?(\d+(?:\.\d+)?)\s?" + SUFFIX, re.I)
 MONEY_RE = re.compile(r"(?<![\w.,])(\$)?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(?:" + SUFFIX + ")?", re.I)
 PCT_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?(?:%|percent\b)", re.I)
-WORDNUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-           "eight": 8, "ten": 10, "twelve": 12}
+WORDNUM = {"a": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+           "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
 NOTICE_RE = re.compile(r"\b(\d+|" + "|".join(WORDNUM) + r")[\s-]+(week|month)s?\b", re.I)
 NAME = r"([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,3})"
 AT_LABEL_RE = re.compile(r"\bAt " + NAME + ":")
 AT_INLINE_RE = re.compile(r"\bat " + NAME)
+EMPLOYER_LABEL_RE = re.compile(r"\b(?:[Ee]mployer|[Cc]ompany)\b\W{0,4}" + NAME)
+WORKS_FOR_RE = re.compile(r"\bwork(?:s|ing|ed)? (?:for|at) " + NAME)
+SALARY_LINE_RE = re.compile(r"salary|base|package|\bcomp\b|remuneration|\brate\b|nzd|aud|usd|\$", re.I)
 
 
 def money(text: str, loose: bool = False) -> set[int]:
@@ -29,7 +32,8 @@ def money(text: str, loose: bool = False) -> set[int]:
         vals |= {round(float(m[1]) * mult), round(float(m[2]) * mult)}
     for m in MONEY_RE.finditer(RANGE_RE.sub(" ", text)):
         dollar, num, suf = m[1], m[2], m[3]
-        if not (dollar or suf or (loose and "," in num)):
+        bare_ok = loose and ("," in num or float(num.replace(",", "")) >= 1000)
+        if not (dollar or suf or bare_ok):
             continue
         vals.add(round(float(num.replace(",", "")) * (MULT[suf.lower()] if suf else 1)))
     return vals
@@ -48,7 +52,7 @@ def notices(text: str) -> set[tuple[int, str]]:
 
 
 def employers(draft: str) -> list[str]:
-    found = [m[1] for m in AT_LABEL_RE.finditer(draft)]
+    found = [m[1] for r in (AT_LABEL_RE, EMPLOYER_LABEL_RE, WORKS_FOR_RE) for m in r.finditer(draft)]
     for line in draft.splitlines():
         if "current" in line.lower():
             found += [m[1] for m in AT_INLINE_RE.finditer(line)]
@@ -58,7 +62,10 @@ def employers(draft: str) -> list[str]:
 def check(draft: str, sources: str, allow=()) -> list[dict]:
     out = []
     src_money = money(sources, loose=True)
-    out += [{"kind": "money", "value": v} for v in sorted(money(draft) - src_money)]
+    # Bare numbers only count as money on salary-ish lines of the draft ("NZD 210000 base").
+    salary_lines = "\n".join(l for l in draft.splitlines() if SALARY_LINE_RE.search(l))
+    draft_money = money(draft) | money(salary_lines, loose=True)
+    out += [{"kind": "money", "value": v} for v in sorted(draft_money - src_money)]
     out += [{"kind": "percent", "value": v} for v in sorted(percents(draft) - percents(sources))]
     notice_lines = "\n".join(l for l in draft.splitlines() if "notice" in l.lower())
     out += [{"kind": "notice", "value": f"{n} {u}"}

@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""PreToolUse guard: Slack posts only to Sam's DM; Notion writes only where Interview Desk may write."""
+"""Interview Desk hook.
+
+PreToolUse (default): Slack posts only to Sam's DM; Notion pages only under a parent Sam approved
+(or the Candidates DB); Notion updates only on pages this loop created.
+PostToolUse (--record): remember the ids of pages notion-create-pages just made.
+The allowlists come from state the agent can't write directly: approvals are set only by
+replies.apply_reply, and created_pages.json only by this hook.
+"""
 import json
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-import roles  # noqa: E402
 import statelib as sl  # noqa: E402
 
 UUID = re.compile(r"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})")
@@ -14,11 +20,14 @@ HEX = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 PARENT_KEYS = {"page_id", "database_id", "data_source_id"}
 
 
+def _ids(value) -> set[str]:
+    return set(HEX.findall(UUID.sub(r"\1\2\3\4\5", str(value or "").lower())))
+
+
 def notion_id(value) -> str | None:
-    """Last Notion id in a URL, dashed UUID or bare id. Slug letters never bleed into the id."""
-    s = UUID.sub(r"\1\2\3\4\5", str(value or "").lower())
-    found = HEX.findall(s)
-    return found[-1] if found else None
+    """The one Notion id in a URL, dashed UUID or bare id; None if there are none or several."""
+    found = _ids(value)
+    return found.pop() if len(found) == 1 else None
 
 
 def collect(obj, keys: set[str]) -> list[str]:
@@ -40,12 +49,30 @@ def _config(name: str) -> dict:
     return json.loads(p.read_text()) if p.exists() else {}
 
 
+def _created_path() -> Path:
+    return sl.root() / "state" / "created_pages.json"
+
+
+def created_pages() -> set[str]:
+    p = _created_path()
+    return set(json.loads(p.read_text())) if p.exists() else set()
+
+
 def allowed() -> tuple[str | None, set[str], set[str]]:
     notion = _config("notion.json")
-    parents = {notion_id(r.get("submissions_page")) for r in roles.load_roles() if roles.is_open(r)}
-    parents |= {notion_id(notion.get(k)) for k in ("candidates_db", "candidates_data_source")}
-    pages = {notion_id(i.get(k)) for i in sl.load()["items"].values() for k in ("notion_row", "submission_page")}
-    return _config("slack.json").get("dm_channel_id") or None, parents - {None}, pages - {None}
+    parents = {notion_id(notion.get(k)) for k in ("candidates_db", "candidates_data_source")}
+    parents |= {notion_id(i.get("approved_parent")) for i in sl.load()["items"].values()
+                if i["status"] == "drafting" and i.get("approved_by")}
+    return _config("slack.json").get("dm_channel_id") or None, parents - {None}, created_pages()
+
+
+def record(payload: dict) -> None:
+    if not payload.get("tool_name", "").endswith("notion-create-pages"):
+        return
+    parent_ids = _ids(json.dumps(payload.get("tool_input") or {}))
+    new = _ids(json.dumps(payload.get("tool_response") or {})) - parent_ids
+    if new:
+        sl.atomic_write(_created_path(), json.dumps(sorted(created_pages() | new)) + "\n")
 
 
 def decide(payload: dict) -> str | None:
@@ -62,7 +89,7 @@ def decide(payload: dict) -> str | None:
         raw = collect(parent, PARENT_KEYS) if isinstance(parent, dict) else ([parent] if parent else [])
         ids = [notion_id(v) for v in raw]
         if not ids or any(i not in parents for i in ids):
-            return "Notion pages may only be created under an open role's Submissions page or the Candidates DB."
+            return "Notion pages may only be created under a Submissions page Sam approved, or the Candidates DB."
         return None
     ids = [notion_id(v) for v in collect(inp, {"page_id"})]
     if not ids or any(i not in pages for i in ids):
@@ -71,6 +98,12 @@ def decide(payload: dict) -> str | None:
 
 
 def main() -> int:
+    if "--record" in sys.argv:
+        try:
+            record(json.loads(sys.stdin.read()))
+        except Exception as e:  # recording must never block the tool result
+            print(f"guard record error: {e}", file=sys.stderr)
+        return 0
     try:
         reason = decide(json.loads(sys.stdin.read()))
     except Exception as e:  # fail closed

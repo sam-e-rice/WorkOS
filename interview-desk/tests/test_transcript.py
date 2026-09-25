@@ -63,3 +63,27 @@ def test_incomplete_transcript():
 def test_cli_segments(desk):
     r = run_script("transcript.py", "segments", str(FIX / "transcript_plain.txt"))
     assert json.loads(r.stdout)["complete"] is True
+
+
+def test_candidate_who_speaks_once_is_kept_when_known():
+    text = ("Sam Rice | We Are Eight: Hi there.\n"
+            "Jane Doe: I built the payments platform.\n"
+            "Sam Rice | We Are Eight: Great, thanks.\n"
+            "Transcription ended after 00:05:00\n")
+    segs = tr.parse_transcript(text, known=["Jane Doe"])["segments"]
+    assert [s["speaker"] for s in segs] == ["Sam Rice | We Are Eight", "Jane Doe", "Sam Rice | We Are Eight"]
+
+
+def test_label_on_its_own_line():
+    text = ("**Sam Rice | We Are Eight:**\nHi there.\n**Jane Doe:**\nHappy to chat.\n"
+            "**Sam Rice | We Are Eight:**\nGreat.\n**Jane Doe:**\nThanks.\n"
+            "Transcription ended after 00:05:00\n")
+    segs = tr.parse_transcript(text)["segments"]
+    assert [(s["speaker"], s["text"]) for s in segs][:2] == [
+        ("Sam Rice | We Are Eight", "Hi there."), ("Jane Doe", "Happy to chat.")]
+
+
+def test_no_segments_is_not_complete():
+    out = tr.parse_transcript("just notes\nTranscription ended after 00:01:00\n")
+    assert out["segments"] == []
+    assert out["complete"] is False

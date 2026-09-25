@@ -51,6 +51,23 @@ def test_partial_word_does_not_match():
     assert len(vq.check(md, segs(), "Jane Doe", SAM)) == 1
 
 
+def test_malformed_quote_line_fails():
+    md = '> "we cut checkout latency by 40%" - Jane Doe\n'
+    [f] = vq.check(md, segs(), "Jane Doe", SAM)
+    assert f["reason"] == "not in quote format"
+
+
+def test_one_word_quote_fails():
+    md = '> "worries" (Jane Doe, 00:00:00)\n'
+    [f] = vq.check(md, segs(), "Jane Doe", SAM)
+    assert f["reason"] == "too short to verify"
+
+
+def test_wrong_timestamp_fails():
+    md = '> "we cut checkout latency by 40%" (Jane Doe, 00:09:00)\n'
+    assert len(vq.check(md, segs(), "Jane Doe", SAM)) == 1
+
+
 def test_drop_removes_only_failing_lines():
     md = ('Fit: strong.\n'
           '> "we cut checkout latency by 40%" (Jane Doe, 00:00:45)\n'
