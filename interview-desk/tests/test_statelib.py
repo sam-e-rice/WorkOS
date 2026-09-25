@@ -94,3 +94,57 @@ def test_same_status_updates_fields_without_logging(desk):
 def test_save_leaves_no_temp_files(desk):
     sl.upsert("d1", {})
     assert [p.name for p in (desk / "state").iterdir() if p.name.endswith(".tmp")] == []
+
+
+import os
+from datetime import datetime, timedelta, timezone
+
+T0 = datetime(2026, 9, 25, 3, 0, tzinfo=timezone.utc)
+
+
+def test_lock_held_then_stale(desk):
+    assert sl.acquire_lock(1, T0)
+    assert not sl.acquire_lock(2, T0 + timedelta(minutes=5))
+    assert sl.acquire_lock(3, T0 + timedelta(minutes=31))
+
+
+def test_release_advances_watermark(desk):
+    sl.acquire_lock(1, T0)
+    sl.release_lock(advance_watermark=True)
+    assert sl.load()["watermark"] == "2026-09-24T03:00:00Z"
+    assert not (desk / "state" / "lock.json").exists()
+
+
+def test_release_without_advance_keeps_watermark(desk):
+    sl.acquire_lock(1, T0)
+    sl.release_lock(advance_watermark=False)
+    assert sl.load()["watermark"] is None
+
+
+def test_default_watermark_is_seven_days_back(desk):
+    assert sl.get_watermark(T0) == "2026-09-18T03:00:00Z"
+
+
+def test_recover_moves_drafting_to_draft_failed(desk):
+    sl.upsert("d1", {})
+    sl.set_status("d1", "awaiting_decision")
+    sl.set_status("d1", "drafting")
+    assert sl.recover() == ["d1"]
+    assert sl.load()["items"]["d1"]["status"] == "draft_failed"
+
+
+def test_prune_keeps_files_of_open_items(desk):
+    inbox = desk / "inbox"
+    inbox.mkdir()
+    old, keep = inbox / "gone.json", inbox / "d1.json"
+    for p in (old, keep):
+        p.write_text("[]")
+        os.utime(p, (0, 0))
+    sl.upsert("d1", {})
+    assert sl.prune(days=30) == 1
+    assert keep.exists() and not old.exists()
+
+
+def test_short_keys_are_unique_prefixes():
+    keys = sl.short_keys(["abcdef111", "abcdef222", "zz"])
+    assert keys == {"abcdef111": "abcdef1", "abcdef222": "abcdef2", "zz": "zz"}

@@ -138,3 +138,75 @@ def set_status(key: str, status: str, fields: dict | None = None,
               "cv_path": item.get("cv_path"), "notion_page": item.get("submission_page"),
               "slack_ts": item.get("slack_ts")})
     return doc_id, item
+
+
+LOCK_STALE = timedelta(minutes=30)
+WATERMARK_OVERLAP = timedelta(hours=24)
+DEFAULT_LOOKBACK = timedelta(days=7)
+PRUNE_DIRS = ("inbox", "state/briefs", "state/drafts", "state/cv_text")
+
+
+def acquire_lock(pid: int, now: datetime | None = None) -> bool:
+    now = now or utcnow()
+    p = state_dir() / "lock.json"
+    payload = json.dumps({"pid": pid, "ts": iso(now)})
+    try:
+        fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        held = json.loads(p.read_text() or "{}")
+        if held.get("ts") and now - parse_iso(held["ts"]) < LOCK_STALE:
+            return False
+        atomic_write(p, payload)
+        return True
+    with os.fdopen(fd, "w") as f:
+        f.write(payload)
+    return True
+
+
+def release_lock(advance_watermark: bool) -> None:
+    p = state_dir() / "lock.json"
+    if not p.exists():
+        return
+    held = json.loads(p.read_text() or "{}")
+    if advance_watermark and held.get("ts"):
+        data = load()
+        data["watermark"] = iso(parse_iso(held["ts"]) - WATERMARK_OVERLAP)
+        save(data)
+    p.unlink()
+
+
+def get_watermark(now: datetime | None = None) -> str:
+    return load()["watermark"] or iso((now or utcnow()) - DEFAULT_LOOKBACK)
+
+
+def recover(now: datetime | None = None) -> list[str]:
+    stuck = [d for d, i in load()["items"].items() if i["status"] == "drafting"]
+    for doc_id in stuck:
+        set_status(doc_id, "draft_failed", {"error": "recovered: previous run ended mid-draft"}, now)
+    return stuck
+
+
+def prune(days: int = 30, now: datetime | None = None) -> int:
+    cutoff = ((now or utcnow()) - timedelta(days=days)).timestamp()
+    open_ids = {d for d, i in load()["items"].items() if i["status"] not in TERMINAL}
+    removed = 0
+    for rel in PRUNE_DIRS:
+        d = root() / rel
+        if not d.exists():
+            continue
+        for f in d.rglob("*"):
+            if f.is_file() and f.stat().st_mtime < cutoff and f.stem not in open_ids:
+                f.unlink()
+                removed += 1
+    return removed
+
+
+def short_keys(ids: list[str], min_len: int = 6) -> dict[str, str]:
+    out = {}
+    for doc_id in ids:
+        others = [o for o in ids if o != doc_id]
+        n = min(min_len, len(doc_id))
+        while n < len(doc_id) and any(o.startswith(doc_id[:n]) for o in others):
+            n += 1
+        out[doc_id] = doc_id[:n]
+    return out
