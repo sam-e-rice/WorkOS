@@ -1,5 +1,7 @@
 """Open Roles lookup: match calendar text or Sam's reply to one open role."""
+import argparse
 import json
+import sys
 
 import statelib as sl
 from textnorm import norm, tokens
@@ -56,3 +58,17 @@ def match_role(text: str, roles: list[dict]) -> dict:
     scored = [(len(words & set(tokens(r["role"] + " " + r["client"]))), r) for r in pool]
     hints = [describe(r) for score, r in sorted(scored, key=lambda s: -s[0]) if score > 0][:2]
     return {"none": True, "hints": hints}
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="roles.py")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    m = sub.add_parser("match")
+    m.add_argument("--text", required=True)
+    args = p.parse_args(argv)
+    print(json.dumps(match_role(args.text, load_roles())))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

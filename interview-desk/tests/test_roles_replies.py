@@ -207,3 +207,9 @@ def test_cli_dm_reply(desk):
     roles.save_roles(ROLES)
     r = run_script("state.py", "dm-reply", "--text", "yes", "--user", SAM, "--ts", "101.0")
     assert json.loads(r.stdout)["key"] == "doc1"
+
+
+def test_cli_roles_match(desk):
+    run_script("state.py", "save-roles", "--data", json.dumps(ROLES))
+    r = run_script("roles.py", "match", "--text", "Chief Engineer chat")
+    assert json.loads(r.stdout) == {"match": "r1"}
