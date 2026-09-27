@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,7 +34,7 @@ ITEM_DEFAULTS = {
     "approved_by": None, "approved_ts": None, "approved_parent": None,
 }
 # Set only by replies.apply_reply via set_status(approval=...), never through fields.
-PROTECTED = {"status", "attempts", "approved_by", "approved_ts", "approved_parent"}
+PROTECTED = {"status", "attempts", "approved_by", "approved_ts", "approved_parent", "cv_path"}
 # Once recorded, a Notion id can't be pointed somewhere else.
 WRITE_ONCE = {"notion_row", "submission_page"}
 APPROVAL_KEYS = ("approved_by", "approved_ts", "approved_parent")
@@ -42,6 +43,21 @@ NEEDS_APPROVAL = {"awaiting_decision", "parked"}
 
 class StateError(Exception):
     pass
+
+
+_UUID = re.compile(r"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})")
+_HEX = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
+CV_SUFFIXES = (".pdf", ".docx")
+
+
+def notion_ids(value) -> set[str]:
+    return set(_HEX.findall(_UUID.sub(r"\1\2\3\4\5", str(value or "").lower())))
+
+
+def notion_id(value) -> str | None:
+    """The one Notion id in a URL, dashed UUID or bare id; None if there are none or several."""
+    found = notion_ids(value)
+    return found.pop() if len(found) == 1 else None
 
 
 def root() -> Path:
@@ -233,3 +249,29 @@ def short_keys(ids: list[str], min_len: int = 6) -> dict[str, str]:
             n += 1
         out[doc_id] = doc_id[:n]
     return out
+
+
+def cv_dir() -> Path:
+    return Path(os.environ.get("DESK_CV_DIR") or Path.home() / "Downloads" / "CVs").resolve()
+
+
+def check_cv_path(path) -> Path:
+    """A CV must be a .pdf/.docx inside the CV folder; nothing else may be uploaded."""
+    p = Path(path).resolve()
+    if cv_dir() not in p.parents:
+        raise StateError(f"CV must be inside the CV folder {cv_dir()}")
+    if p.suffix.lower() not in CV_SUFFIXES:
+        raise StateError("CV must be a .pdf or .docx file")
+    return p
+
+
+def record_cv(key: str, path, now: datetime | None = None) -> dict:
+    p = check_cv_path(path)
+    data = load()
+    doc_id = resolve_key(data, key)
+    item = data["items"][doc_id]
+    _check_not_terminal(doc_id, item)
+    item["cv_path"] = str(p)
+    item["updated"] = iso(now or utcnow())
+    save(data)
+    return item

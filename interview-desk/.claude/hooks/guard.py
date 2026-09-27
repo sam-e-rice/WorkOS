@@ -9,14 +9,14 @@ replies.apply_reply, and created_pages.json only by this hook.
 """
 import json
 import re
+import string
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import roles  # noqa: E402
 import statelib as sl  # noqa: E402
 
-UUID = re.compile(r"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})")
-HEX = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 PARENT_KEYS = {"page_id", "database_id", "data_source_id"}
 MARKER = "🤖 Interview Desk · "
 # Notion-flavoured Markdown tags that MOVE existing pages/databases into the new content.
@@ -34,13 +34,40 @@ def strings(obj) -> list[str]:
 
 
 def _ids(value) -> set[str]:
-    return set(HEX.findall(UUID.sub(r"\1\2\3\4\5", str(value or "").lower())))
+    return sl.notion_ids(value)
 
 
-def notion_id(value) -> str | None:
-    """The one Notion id in a URL, dashed UUID or bare id; None if there are none or several."""
-    found = _ids(value)
-    return found.pop() if len(found) == 1 else None
+notion_id = sl.notion_id
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+SCRIPT_RE = re.compile(r"\.venv/bin/python scripts/([a-z_]+)\.py(?=[ \t]|$)")
+SAFE_CHARS = set(string.ascii_letters + string.digits + "_./:@%+=,-")
+
+
+def bash_problem(cmd: str) -> str | None:
+    """Only `.venv/bin/python scripts/<desk script>.py` with plain or single-quoted args."""
+    m = SCRIPT_RE.match(cmd)
+    if not m:
+        return "Only `.venv/bin/python scripts/<name>.py ...` commands may run here."
+    if not (SCRIPTS / f"{m[1]}.py").is_file():
+        return f"No desk script named {m[1]}.py."
+    rest, i = cmd[m.end():], 0
+    while i < len(rest):
+        c = rest[i]
+        if c in " \t":
+            i += 1
+        elif c == "'":
+            end = rest.find("'", i + 1)
+            if end < 0:
+                return "Unterminated single quote."
+            i = end + 1
+        elif c == "\\" and rest[i + 1:i + 2] == "'":
+            i += 2
+        elif c in SAFE_CHARS:
+            i += 1
+        else:
+            return f"Character {c!r} isn't allowed outside single quotes."
+    return None
 
 
 def collect(obj, keys: set[str]) -> list[str]:
@@ -75,7 +102,8 @@ def allowed() -> tuple[set[str], set[str], set[str]]:
     notion = _config("notion.json")
     parents = {notion_id(notion.get(k)) for k in ("candidates_db", "candidates_data_source")}
     parents |= {notion_id(i.get("approved_parent")) for i in sl.load()["items"].values()
-                if i["status"] == "drafting" and i.get("approved_by")}
+                if i["status"] == "drafting" and i.get("approved_by")
+                and roles.page_allowed(i.get("approved_parent"))}
     slack = _config("slack.json")
     dms = {slack.get("dm_channel_id"), slack.get("dm_im_channel")} - {None, ""}
     return dms, parents - {None}, created_pages()
@@ -93,6 +121,8 @@ def record(payload: dict) -> None:
 def decide(payload: dict) -> str | None:
     tool = payload.get("tool_name", "")
     inp = payload.get("tool_input") or {}
+    if tool == "Bash":
+        return bash_problem(str(inp.get("command") or ""))
     if not tool.endswith(("slack_send_message", "notion-create-pages", "notion-update-page")):
         return None
     dms, parents, pages = allowed()

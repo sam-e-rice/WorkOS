@@ -78,8 +78,12 @@ def test_cli_with_real_docx_copies_text(desk, tmp_path, monkeypatch):
     p = d / "Resume.docx"
     doc.save(p)
     os.utime(p, (MEETING_TS,) * 2)
+    import statelib as sl
+    sl.upsert("doc1", {})
+    monkeypatch.setenv("DESK_CV_DIR", str(d))
     r = run_script("match_cv.py", "--name", "Jane Doe", "--email", "jane@example.com",
                    "--meeting-at", MEETING, "--doc-id", "doc1", "--dir", str(d))
     out = json.loads(r.stdout)
     assert out["match"].endswith("Resume.docx")
     assert "Canva" in (desk / out["text"]).read_text()
+    assert sl.load()["items"]["doc1"]["cv_path"] == str(p.resolve())

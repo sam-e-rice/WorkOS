@@ -62,3 +62,17 @@ def test_cli(desk, tmp_path):
     assert json.loads(r.stdout)["title"] == "Jane Doe | Chief Engineer"
     d.write_text("no sections")
     assert run_script("build_page.py", "--draft", str(d), "--candidate", "J", "--role", "R").returncode == 2
+
+
+def test_skill_aside_header_becomes_one_callout():
+    draft = DRAFT.replace("**Current:** Staff Engineer at Canva | **Location:** Sydney\n**Salary:** $180k base | **Notice:** 4 weeks",
+                          "<aside>\n`Current:` **Staff Engineer, Canva** | `Location:` Sydney\n</aside>")
+    out = bp.build(draft, "Jane Doe", "Chief Engineer")
+    assert "<aside" not in out["content"]
+    assert out["content"].startswith('<callout icon="📌" color="gray_bg">\n\t`Current:`')
+    assert out["content"].count("<callout") == 1
+
+
+@pytest.mark.parametrize("empty", ["", "None", "null"])
+def test_missing_cv_markdown_means_no_cv_section(empty):
+    assert "📎 CV" not in bp.build(DRAFT, "Jane Doe", "Chief Engineer", empty)["content"]

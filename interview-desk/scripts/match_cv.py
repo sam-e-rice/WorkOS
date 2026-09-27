@@ -93,6 +93,12 @@ def main(argv=None) -> int:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(_cache_file(out["digest"]), dest)
         out["text"] = str(dest.relative_to(sl.root()))
+        if args.doc_id in sl.load()["items"]:
+            try:
+                sl.record_cv(args.doc_id, out["match"])
+                out["cv_path_recorded"] = True
+            except sl.StateError as e:
+                out["cv_warning"] = str(e)
     print(json.dumps(out))
     return 0
 

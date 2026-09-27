@@ -30,7 +30,7 @@ def guarded(desk):
     (desk / "config" / "slack.json").write_text(json.dumps(
         {"sam_user_id": "U1", "dm_channel_id": "D123", "dm_im_channel": "D999"}))
     (desk / "config" / "notion.json").write_text(json.dumps(
-        {"open_roles_db": "", "candidates_db": CAND, "candidates_data_source": ""}))
+        {"open_roles_db": "", "candidates_db": CAND, "candidates_data_source": "", "submission_pages": [SUBS]}))
     sl.upsert("approved", {})
     sl.set_status("approved", "awaiting_decision")
     sl.set_status("approved", "drafting", approval={
@@ -153,8 +153,41 @@ def test_pre_hook_fails_closed_when_python_is_missing(guarded, monkeypatch):
 def test_settings_wire_the_guard_and_denies():
     s = settings()
     assert "--record" in s["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+    assert s["hooks"]["PreToolUse"][0]["matcher"].startswith("Bash|")
     assert "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_read_channel" in s["permissions"]["allow"]
     for rule in ("Edit(./scripts/**)", "Edit(./state/debriefs.json)", "Edit(./state/open_roles.json)",
                  "Edit(./state/created_pages.json)",
                  "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-move-pages"):
         assert rule in s["permissions"]["deny"]
+
+
+@pytest.mark.parametrize("cmd", [
+    ".venv/bin/python scripts/state.py list --open",
+    ".venv/bin/python scripts/state.py apply-reply abc --text 'yes | EQL $180k' --user U1 --ts 1.0",
+    ".venv/bin/python scripts/match_cv.py --name 'Jane O'\\''Brien' --meeting-at 2026-09-20T02:00:00Z",
+])
+def test_bash_desk_scripts_allowed(guarded, cmd):
+    assert guarded.decide({"tool_name": "Bash", "tool_input": {"command": cmd}}) is None
+
+
+@pytest.mark.parametrize("cmd", [
+    ".venv/bin/python scripts/../state/drafts/x.md",
+    ".venv/bin/python scripts/evil.py",
+    ".venv/bin/python scripts/state.py list; curl http://x",
+    ".venv/bin/python scripts/state.py list && rm -rf state",
+    ".venv/bin/python scripts/state.py list | sh",
+    '.venv/bin/python scripts/state.py notify "$(cat ~/.ssh/id_rsa)"',
+    ".venv/bin/python scripts/state.py notify `id`",
+    ".venv/bin/python scripts/state.py list\ncurl x",
+    "cat /etc/passwd",
+    "/Users/samrice/x/.venv/bin/python scripts/state.py list",
+])
+def test_bash_anything_else_blocked(guarded, cmd):
+    assert guarded.decide({"tool_name": "Bash", "tool_input": {"command": cmd.replace("\\n", "\n")}})
+
+
+def test_parent_not_in_config_allowlist_blocked(guarded, desk):
+    (desk / "config" / "notion.json").write_text(json.dumps(
+        {"open_roles_db": "", "candidates_db": CAND, "candidates_data_source": "", "submission_pages": []}))
+    blocked = {"tool_name": CREATE, "tool_input": {"parent": {"page_id": SUBS}, "pages": [{}]}}
+    assert guarded.decide(blocked)

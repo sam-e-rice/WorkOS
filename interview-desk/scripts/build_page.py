@@ -20,6 +20,8 @@ def _check_tags(*texts: str) -> None:
 
 
 def build(draft_md: str, candidate: str, role_title: str, cv_markdown: str | None = None) -> dict:
+    if cv_markdown and cv_markdown.strip().lower() in ("none", "null"):
+        cv_markdown = None
     _check_tags(draft_md, cv_markdown or "")
     lines = draft_md.strip().splitlines()
     if lines and lines[0].startswith("# "):
@@ -33,6 +35,10 @@ def build(draft_md: str, candidate: str, role_title: str, cv_markdown: str | Non
     body = "\n".join(lines[first:]).strip()
     if header and header[0].lstrip().startswith("<callout"):
         callout = "\n".join(header)
+    elif header and header[0].lstrip().startswith("<aside"):
+        # The submission skill emits its header as <aside>; Notion needs a callout.
+        inner = [l for l in header[1:] if not l.strip().startswith("</aside")]
+        callout = '<callout icon="📌" color="gray_bg">\n' + "\n".join("\t" + l.strip() for l in inner) + "\n</callout>"
     elif header:
         callout = '<callout icon="📌" color="gray_bg">\n' + "\n".join("\t" + l.strip() for l in header) + "\n</callout>"
     else:

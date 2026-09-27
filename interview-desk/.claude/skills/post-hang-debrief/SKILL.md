@@ -45,7 +45,7 @@ Then `.venv/bin/python scripts/state.py list --open`.
 ## 4. Brief
 For each item with status `new`, `pending_transcript` or `failed` whose `inbox/<doc_id>.json` exists:
 1. `.venv/bin/python scripts/match_cv.py --name '<candidate>' --email '<email>' --meeting-at <meeting_at> --doc-id <doc_id>`
-   On a match: `.venv/bin/python scripts/state.py upsert <doc_id> --data '{"cv_path": "<match>"}'`
+   On a single match it records the item's `cv_path` itself (only CVs inside the CV folder).
 2. If `role_row` is empty: `.venv/bin/python scripts/roles.py match --text '<role_text or title>'`;
    on a match `.venv/bin/python scripts/state.py upsert <doc_id> --data '{"role_row": "<id>"}'`.
 3. Read `inbox/<doc_id>.json`, `state/cv_text/<doc_id>.txt` (if any) and the role's Brief page.
@@ -76,16 +76,17 @@ For each item with status `drafting` (and `draft_failed`, first set back with
 3. ids-sam-rice-voice (client-facing): tone only. 4. ids-stop-slop: remove only, never add facts.
 5. `.venv/bin/python scripts/verify_facts.py state/drafts/<doc_id>.md --segments inbox/<doc_id>.json --cv state/cv_text/<doc_id>.txt --allow '<client>' --allow 'We Are Eight'`
    Exit 1: fix once and rerun. Still 1: ask Sam about each unsupported fact as in 2.
-6. CV: notion-create-file-upload with filename `<Name> CV.pdf` (or `.docx`), then
+6. CV (if the item has no `cv_path`, skip this step and leave `--cv-markdown` out of step 7):
+   notion-create-file-upload with filename `<Name> CV.pdf` (or `.docx`), then
    `.venv/bin/python scripts/notion_upload.py <doc_id> --url '<upload_url>' --headers '<upload_headers json>'`
 7. `.venv/bin/python scripts/build_page.py --draft state/drafts/<doc_id>.md --candidate '<Name>' --role '<Role title>' --cv-markdown '<suggested_markdown>'`
 8. Fetch the item's `approved_parent` page. If it already lists a child titled `<Name> | <Role title>`,
    use that page. Otherwise notion-create-pages under `approved_parent` (page_id) with the built
    title and content, `allow_async: false`.
 9. `.venv/bin/python scripts/state.py upsert <doc_id> --data '{"submission_page": "<page id>"}'`
-   `.venv/bin/python scripts/state.py set <doc_id> submitted`
    Update the Candidates row: Outcome `Submitted`, Submission page = the page URL.
    Reply in the thread: `🤖 Interview Desk · Draft ready (private): <url>. Review it, then Publish when you're happy.`
+   Only then: `.venv/bin/python scripts/state.py set <doc_id> submitted`
 On any error: `.venv/bin/python scripts/state.py set <doc_id> draft_failed --error '<short message>'`.
 
 ## 6. Finish

@@ -28,6 +28,17 @@ def save_roles(rows: list[dict]) -> None:
     sl.atomic_write(_path(), json.dumps(rows, indent=2) + "\n")
 
 
+def allowed_submission_pages() -> set[str]:
+    """Submissions pages Sam has listed in config/notion.json (the agent can't edit config)."""
+    p = sl.root() / "config" / "notion.json"
+    pages = json.loads(p.read_text()).get("submission_pages", []) if p.exists() else []
+    return {sl.notion_id(x) or x for x in pages}
+
+
+def page_allowed(page: str) -> bool:
+    return bool(page) and (sl.notion_id(page) or page) in allowed_submission_pages()
+
+
 def is_open(r: dict) -> bool:
     return (r.get("status") or "").lower() == "open"
 

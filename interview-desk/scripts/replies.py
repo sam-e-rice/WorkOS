@@ -1,6 +1,6 @@
 """Turn Sam's Slack thread replies into state transitions."""
 import statelib as sl
-from roles import describe, is_open, match_role
+from roles import describe, is_open, match_role, page_allowed
 
 YES = {"yes", "y", "yep", "yeah", "submit"}
 NO = {"no", "n", "nah", "nope", "park"}
@@ -71,6 +71,10 @@ def apply_reply(key: str, text: str, user: str, ts: str | None,
         open_roles = ", ".join(describe(x) for x in roles if is_open(x))
         return {"action": "refuse",
                 "message": f"No open role for this hang. Reply `yes <role or client>`. Open roles: {open_roles}"}
+    if not page_allowed(role["submissions_page"]):
+        return {"action": "refuse",
+                "message": f"The Submissions page for {describe(role)} isn't in config/notion.json "
+                           "submission_pages yet. Add it, then reply yes again."}
     # The approval freezes the Submissions page the guard will allow for this item.
     approval = {"approved_by": user, "approved_ts": ts or sl.iso(sl.utcnow()),
                 "approved_parent": role["submissions_page"]}

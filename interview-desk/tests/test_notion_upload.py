@@ -26,10 +26,16 @@ class FakeResponse:
         return False
 
 
+@pytest.fixture(autouse=True)
+def cv_dir(desk, monkeypatch):
+    monkeypatch.setenv("DESK_CV_DIR", str(desk))
+
+
 def approved_item(desk, cv_name="Jane O'Brien CV.pdf", candidate="Jane O'Brien"):
     cv = desk / cv_name
     cv.write_bytes(b"%PDF-1.4 fake")
-    sl.upsert("doc1", {"candidate": candidate, "cv_path": str(cv)})
+    sl.upsert("doc1", {"candidate": candidate})
+    sl.record_cv("doc1", str(cv))
     sl.set_status("doc1", "awaiting_decision")
     sl.set_status("doc1", "drafting", approval=APPROVAL)
     return cv
@@ -64,8 +70,15 @@ def test_non_notion_url_refused(desk):
         nu.upload("doc1", "https://evil.example/upload", {}, opener=None)
 
 
+def test_cv_moved_outside_the_folder_refused(desk, monkeypatch, tmp_path_factory):
+    approved_item(desk)
+    monkeypatch.setenv("DESK_CV_DIR", str(tmp_path_factory.mktemp("elsewhere")))
+    with pytest.raises(sl.StateError, match="CV folder"):
+        nu.upload("doc1", URL, {}, opener=None)
+
+
 def test_unapproved_item_refused(desk):
-    sl.upsert("doc1", {"cv_path": "/tmp/x.pdf"})
+    sl.upsert("doc1", {})
     sl.set_status("doc1", "awaiting_decision")
     with pytest.raises(sl.StateError, match="approved"):
         nu.upload("doc1", URL, {}, opener=None)

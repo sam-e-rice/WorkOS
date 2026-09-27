@@ -185,3 +185,25 @@ def test_terminal_items_are_frozen(desk):
         sl.set_status("d1", "abandoned", {"error": "x"})
     with pytest.raises(sl.StateError, match="abandoned"):
         sl.upsert("d1", {"submission_page": "zzz"})
+
+
+def test_cv_path_cannot_be_set_through_fields(desk):
+    item = sl.upsert("d1", {"cv_path": "/Users/samrice/.ssh/id_rsa"})
+    assert item["cv_path"] is None
+
+
+def test_record_cv_only_inside_the_cv_folder(desk, monkeypatch):
+    cvdir = desk / "CVs"
+    cvdir.mkdir()
+    (cvdir / "Jane.pdf").write_bytes(b"x")
+    (desk / "key.pdf").write_bytes(b"x")
+    monkeypatch.setenv("DESK_CV_DIR", str(cvdir))
+    sl.upsert("d1", {})
+    assert sl.record_cv("d1", str(cvdir / "Jane.pdf"))["cv_path"] == str((cvdir / "Jane.pdf").resolve())
+    with pytest.raises(sl.StateError, match="CV folder"):
+        sl.record_cv("d1", str(desk / "key.pdf"))
+    with pytest.raises(sl.StateError, match="CV folder"):
+        sl.record_cv("d1", str(cvdir / ".." / "key.pdf"))
+    (cvdir / "notes.txt").write_text("x")
+    with pytest.raises(sl.StateError, match="pdf or .docx"):
+        sl.record_cv("d1", str(cvdir / "notes.txt"))

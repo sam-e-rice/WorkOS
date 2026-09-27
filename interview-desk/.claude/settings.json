@@ -33,7 +33,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__.*__(slack_send_message|notion-create-pages|notion-update-page)",
+        "matcher": "Bash|mcp__.*__(slack_send_message|notion-create-pages|notion-update-page)",
         "hooks": [
           {
             "type": "command",

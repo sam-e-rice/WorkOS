@@ -38,3 +38,16 @@ def test_config_is_not_pointing_at_the_spike_page():
 def test_spike_files_removed():
     assert not (PROJECT / "scripts" / "spike.py").exists()
     assert not (PROJECT / "docs" / "spike-task-prompt.md").exists()
+
+
+def test_run_skill_skips_upload_without_a_cv():
+    assert "no `cv_path`" in RUN.read_text()
+
+
+def test_run_skill_sends_the_link_before_marking_submitted():
+    text = RUN.read_text()
+    assert text.index("Draft ready (private)") < text.index("state.py set <doc_id> submitted")
+
+
+def test_run_skill_does_not_set_cv_path_itself():
+    assert '"cv_path"' not in RUN.read_text()

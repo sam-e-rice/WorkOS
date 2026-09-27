@@ -28,7 +28,9 @@ def upload(key: str, url: str, headers: dict, opener=urllib.request.urlopen) -> 
     item = data["items"][doc_id]
     if item["status"] != "drafting" or not item.get("approved_by"):
         raise sl.StateError(f"{doc_id}: CV upload is only for an approved draft")
-    path = Path(item.get("cv_path") or "")
+    if not item.get("cv_path"):
+        raise sl.StateError(f"{doc_id}: no CV file recorded")
+    path = sl.check_cv_path(item["cv_path"])
     if not path.is_file():
         raise sl.StateError(f"{doc_id}: no CV file recorded")
     suffix = path.suffix.lower()

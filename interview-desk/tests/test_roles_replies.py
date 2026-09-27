@@ -20,6 +20,15 @@ ROLES = [
 SAM = "U_SAM"
 
 
+@pytest.fixture(autouse=True)
+def allow_submission_pages(request):
+    if "desk" in request.fixturenames:
+        desk = request.getfixturevalue("desk")
+        (desk / "config" / "notion.json").write_text(json.dumps(
+            {"open_roles_db": "", "candidates_db": "", "candidates_data_source": "",
+             "submission_pages": ["p1", "p2", "p3"]}))
+
+
 def test_match_by_alias():
     assert roles.match_role("Hang re: Chief Engineer chat", ROLES) == {"match": "r1"}
 
@@ -213,3 +222,12 @@ def test_cli_roles_match(desk):
     run_script("state.py", "save-roles", "--data", json.dumps(ROLES))
     r = run_script("roles.py", "match", "--text", "Chief Engineer chat")
     assert json.loads(r.stdout) == {"match": "r1"}
+
+
+def test_yes_for_role_whose_submissions_page_is_not_allowlisted_is_refused(desk):
+    (desk / "config" / "notion.json").write_text(json.dumps({"submission_pages": ["p2"]}))
+    awaiting(desk, "r1")
+    out = replies.apply_reply("doc1", "yes", SAM, "101.0", ROLES, SAM)
+    assert out["action"] == "refuse"
+    assert "config/notion.json" in out["message"]
+    assert sl.load()["items"]["doc1"]["status"] == "awaiting_decision"
