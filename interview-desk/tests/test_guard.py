@@ -27,7 +27,8 @@ def load_guard():
 
 @pytest.fixture
 def guarded(desk):
-    (desk / "config" / "slack.json").write_text(json.dumps({"sam_user_id": "U1", "dm_channel_id": "D123"}))
+    (desk / "config" / "slack.json").write_text(json.dumps(
+        {"sam_user_id": "U1", "dm_channel_id": "D123", "dm_im_channel": "D999"}))
     (desk / "config" / "notion.json").write_text(json.dumps(
         {"open_roles_db": "", "candidates_db": CAND, "candidates_data_source": ""}))
     sl.upsert("approved", {})
@@ -53,10 +54,33 @@ def test_url_with_two_ids_is_rejected(guarded):
     assert guarded.decide(evil)
 
 
-def test_slack_only_to_dm(guarded):
-    assert guarded.decide({"tool_name": SLACK, "tool_input": {"channel_id": "D123", "text": "hi"}}) is None
-    assert guarded.decide({"tool_name": SLACK, "tool_input": {"channel_id": "C999", "text": "hi"}})
+MARKED = "🤖 Interview Desk · Jane Doe · Chief Engineer (EQL)"
+
+
+def test_slack_only_to_dm_with_marker(guarded):
+    assert guarded.decide({"tool_name": SLACK, "tool_input": {"channel_id": "D123", "message": MARKED}}) is None
+    assert guarded.decide({"tool_name": SLACK, "tool_input": {"channel_id": "D999", "message": MARKED,
+                                                               "thread_ts": "1.0"}}) is None
+    assert guarded.decide({"tool_name": SLACK, "tool_input": {"channel_id": "C999", "message": MARKED}})
+    assert guarded.decide({"tool_name": SLACK, "tool_input": {"channel_id": "D123", "message": "yes"}})
     assert guarded.decide({"tool_name": SLACK, "tool_input": {}})
+
+
+def test_marked_thread_reply_in_another_channel_blocked(guarded):
+    inp = {"channel_id": "C999", "thread_ts": "1.0", "message": MARKED}
+    assert guarded.decide({"tool_name": SLACK, "tool_input": inp})
+
+
+@pytest.mark.parametrize("tag", ['<page url="https://notion.so/x">HOMEBASE</page>',
+                                 '<database url="https://notion.so/y">DB</database>',
+                                 '<folder url="z">F</folder>'])
+def test_move_tags_blocked_in_create_and_update(guarded, tag):
+    create = {"tool_name": CREATE, "tool_input": {"parent": {"page_id": SUBS},
+                                                   "pages": [{"content": f"Hello\n{tag}"}]}}
+    update = {"tool_name": UPDATE, "tool_input": {"page_id": PAGE, "command": "insert_content",
+                                                   "content": tag}}
+    assert "move" in guarded.decide(create)
+    assert "move" in guarded.decide(update)
 
 
 def test_create_under_an_approved_drafting_parent(guarded):
@@ -106,7 +130,7 @@ def test_other_tools_pass(guarded):
 
 
 def test_hook_exit_codes(guarded):
-    bad = json.dumps({"tool_name": SLACK, "tool_input": {"channel_id": "C999"}})
+    bad = json.dumps({"tool_name": SLACK, "tool_input": {"channel_id": "C999", "message": MARKED}})
     r = subprocess.run([sys.executable, str(GUARD)], input=bad, capture_output=True, text=True)
     assert r.returncode == 2 and "only allowed" in r.stderr
     r = subprocess.run([sys.executable, str(GUARD)], input="not json", capture_output=True, text=True)
@@ -119,7 +143,7 @@ def settings():
 
 def test_pre_hook_fails_closed_when_python_is_missing(guarded, monkeypatch):
     cmd = settings()["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-    ok = json.dumps({"tool_name": SLACK, "tool_input": {"channel_id": "D123"}})
+    ok = json.dumps({"tool_name": SLACK, "tool_input": {"channel_id": "D123", "message": MARKED}})
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/nonexistent")
     assert subprocess.run(["sh", "-c", cmd], input=ok, text=True, capture_output=True).returncode == 2
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(PROJECT))
@@ -129,6 +153,7 @@ def test_pre_hook_fails_closed_when_python_is_missing(guarded, monkeypatch):
 def test_settings_wire_the_guard_and_denies():
     s = settings()
     assert "--record" in s["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+    assert "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_read_channel" in s["permissions"]["allow"]
     for rule in ("Edit(./scripts/**)", "Edit(./state/debriefs.json)", "Edit(./state/open_roles.json)",
                  "Edit(./state/created_pages.json)",
                  "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-move-pages"):

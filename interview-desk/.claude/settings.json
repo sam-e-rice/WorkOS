@@ -6,6 +6,7 @@
       "Bash(.venv/bin/python scripts/*)",
       "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_send_message",
       "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_read_thread",
+      "mcp__c571a83e-d6be-4875-8c0f-00bfed9b68fd__slack_read_channel",
       "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-fetch",
       "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-search",
       "mcp__e15988d3-3d1a-4fb0-927a-1a558d10e036__notion-query-data-sources",

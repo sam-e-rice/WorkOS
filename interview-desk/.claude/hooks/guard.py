@@ -18,6 +18,19 @@ import statelib as sl  # noqa: E402
 UUID = re.compile(r"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})")
 HEX = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 PARENT_KEYS = {"page_id", "database_id", "data_source_id"}
+MARKER = "🤖 Interview Desk · "
+# Notion-flavoured Markdown tags that MOVE existing pages/databases into the new content.
+FORBIDDEN_TAGS = ("<page", "<database", "<folder", "<synced_block_reference")
+
+
+def strings(obj) -> list[str]:
+    if isinstance(obj, str):
+        return [obj]
+    if isinstance(obj, dict):
+        return [s for v in obj.values() for s in strings(v)]
+    if isinstance(obj, list):
+        return [s for v in obj for s in strings(v)]
+    return []
 
 
 def _ids(value) -> set[str]:
@@ -58,12 +71,14 @@ def created_pages() -> set[str]:
     return set(json.loads(p.read_text())) if p.exists() else set()
 
 
-def allowed() -> tuple[str | None, set[str], set[str]]:
+def allowed() -> tuple[set[str], set[str], set[str]]:
     notion = _config("notion.json")
     parents = {notion_id(notion.get(k)) for k in ("candidates_db", "candidates_data_source")}
     parents |= {notion_id(i.get("approved_parent")) for i in sl.load()["items"].values()
                 if i["status"] == "drafting" and i.get("approved_by")}
-    return _config("slack.json").get("dm_channel_id") or None, parents - {None}, created_pages()
+    slack = _config("slack.json")
+    dms = {slack.get("dm_channel_id"), slack.get("dm_im_channel")} - {None, ""}
+    return dms, parents - {None}, created_pages()
 
 
 def record(payload: dict) -> None:
@@ -80,10 +95,16 @@ def decide(payload: dict) -> str | None:
     inp = payload.get("tool_input") or {}
     if not tool.endswith(("slack_send_message", "notion-create-pages", "notion-update-page")):
         return None
-    dm, parents, pages = allowed()
+    dms, parents, pages = allowed()
     if tool.endswith("slack_send_message"):
         channel = inp.get("channel_id") or inp.get("channel")
-        return None if dm and channel == dm else f"Slack posts are only allowed to Sam's DM, not {channel!r}."
+        if channel not in dms:
+            return f"Slack posts are only allowed to Sam's DM, not {channel!r}."
+        if not str(inp.get("message") or inp.get("text") or "").startswith(MARKER):
+            return f"Slack posts must start with {MARKER!r} so replies can tell them apart."
+        return None
+    if any(tag in s.lower() for s in strings(inp) for tag in FORBIDDEN_TAGS):
+        return "Notion content may not include page/database/folder tags: they move existing pages."
     if tool.endswith("notion-create-pages"):
         parent = inp.get("parent")
         raw = collect(parent, PARENT_KEYS) if isinstance(parent, dict) else ([parent] if parent else [])
