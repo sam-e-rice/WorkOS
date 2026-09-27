@@ -18,7 +18,7 @@
 - Sam may reply top-level in the DM rather than in the thread (handled by `state.py dm-reply`).
 - Notion: child page creation works; `notion-create-file-upload` returns `upload_url` + `upload_headers`; a multipart POST returns `suggested_markdown` (`<pdf src="file-upload://…"></pdf>`); `notion-update-page` `insert_content` attaches it.
 - Notion-flavoured Markdown: `<page url="…">` inside content **moves** that existing page; `<database url="…">` moves a database. Callouts are `<callout icon="…" color="gray_bg">` with tab-indented children.
-- Neither Word nor LibreOffice is installed, so DOCX CVs upload as files (download, no viewer) unless Sam chooses to install LibreOffice.
+- DOCX CVs upload as files (download, no viewer). Sam converts any he wants embedded to PDF himself in Acrobat; no conversion step in the loop.
 
 ## Global Constraints
 
@@ -861,5 +861,4 @@ No discovery yet (Plan B), so the item is seeded by hand. Stop and ask Sam befor
 
 ## After this plan
 
-- **Plan B (Google discovery)** — then the hourly schedule: create the task from a session whose working folder is `interview-desk/` (check `cwd` in the app's `scheduled-tasks.json`), weekdays 08:00–19:00 hourly, prompt `/post-hang-debrief`, first **Run now** to approve tools. Delete the `interview-desk-spike` task (it holds `git add *` / `git commit *` approvals).
-- **DOCX → PDF** — only if Sam installs LibreOffice (`brew install --cask libreoffice`): add a `to_pdf.py` step before upload so Word CVs get the embedded viewer.
+- **Plan B (Google discovery)** — then the hourly schedule: create the task from a session whose working folder is `interview-desk/` (check `cwd` in the app's `scheduled-tasks.json`), weekdays 08:00–19:00 hourly, prompt `/post-hang-debrief`, first **Run now** to approve tools.
