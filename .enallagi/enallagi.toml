@@ -1,0 +1,38 @@
+# Keys left out take their value from harness.default.toml, the embedded defaults.
+
+[agent]
+preset = "claude"
+# Fix 1: without this a Claude lane is denied Bash and Write. Left for Sam to set to true.
+dangerously_skip_permissions = false
+
+[check]
+command = "sh scripts/check.sh"
+force = "sh scripts/check.sh"
+fail_name = "^FAIL (\\S+)"
+
+[layout]
+source_root = "scripts"
+test_file_suffix_re = "check\\.sh"
+test_decl_patterns = ["# test: {name}"]
+test_glob = ["scripts/check.sh"]
+allowed_prefixes = [
+  "src/",
+  "packages/",
+  "evals/",
+  "scripts/",
+  ".agents/",
+  ".enallagi/",
+  ".claude/",
+  ".github/",
+  ".codex/",
+  ".gemini/",
+  ".cursor/",
+  ".qwen/",
+  ".omp/",
+  "skills-lock.json",
+  "README.md",
+  "CLAUDE.md",
+  "GEMINI.md",
+  "QWEN.md",
+  "AGENTS.md",
+]
